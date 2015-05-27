@@ -1,40 +1,38 @@
 //--------------------------------------------------------------------------
-// Code to test basic Hapkit functionality (sensing and force output)
-// 04.11.14
-// Modified by Cliff Bargar 4/18/14
-// ME 327 Assignment 2
+// Code to compare parameters when simulating a bump with the hapkit
+// May 27, 2015
+// Cassondra Brown, Zach Brong, Greg Yeutter
+// Drexel University ECES 690 - Introduction to Haptics
+// Based on code supplied by the original hapkit authors and modified by
+// Cliff Bargar
+// https://hapkit.wordpress.com/
+// https://github.com/yeutterg/hapkit
 //--------------------------------------------------------------------------
 
-// Includes
 #include <math.h>
 
-// Defines
-#define SAMPLE_PERIOD  (double)0.0004 //0.4ms
+#define SAMPLE_PERIOD  (double)0.0004 // 0.4ms sample period
 
-//DEBUG_SERIAL statements will only print if DEBUG is nonzero
+// DEBUG_SERIAL statements will only print if DEBUG is nonzero
 #define DEBUG 0
 #define DEBUG_SERIAL if(DEBUG) Serial
 
 #define DEBUG_PIN 13
 
-//kinematics
-#define HANDLE_LENGTH (double)0.07 //70.00 mm - Solidworks
+// Kinematics
+#define HANDLE_LENGTH (double)0.07 //70.00 mm
 #define SECTOR_RADIUS (double)0.0757 //calipers
 #define MOTOR_RADIUS (double)0.00837 //m - calipers
 
-//select virtual environment
-#define VIRTUAL_WALL       (char)'A'
-#define LINEAR_DAMP        (char)'B'
-#define NONLINEAR_FRIC     (char)'C'
-#define HARD_SURFACE       (char)'D'
-#define BUMP_VALLEY        (char)'E'
-#define TEXTURE            (char)'F'
-#define MSD                (char)'G'
+// Select simulation
+#define BUMP_MIN           (char)'A'
+#define BUMP_MED           (char)'B'
+#define BUMP_MAX           (char)'C'
 
 //defaults to
-#define ENV_TYPE           MSD
+#define ENV_TYPE           BUMP_MED
 
-// Pin declares
+// Declare pins
 int pwmPin = 5; // PWM output pin for motor 1
 int dirPin = 8; // direction output pin for motor 1
 int sensorPosPin = A2; // input pin for MR sensor
@@ -105,20 +103,12 @@ void setup()
   Serial.println("Initialized");
   
   Serial.println("Select environment type: ");
-  Serial.print("Virtual Wall\t\t\t");
-  Serial.println(VIRTUAL_WALL);
-  Serial.print("Linear Damping\t\t\t");
-  Serial.println(LINEAR_DAMP);
-  Serial.print("Nonlinear Friction\t\t");
-  Serial.println(NONLINEAR_FRIC);
-  Serial.print("Hard Surface\t\t\t");
-  Serial.println(HARD_SURFACE);
-  Serial.print("Bump and Valley\t\t\t");
-  Serial.println(BUMP_VALLEY);
-  Serial.print("Texture\t\t\t\t");
-  Serial.println(TEXTURE);
-  Serial.print("Mass, Spring, Damper\t\t");
-  Serial.println(MSD);
+  Serial.print("Bump Min Width\t\t\t");
+  Serial.println(BUMP_MIN);
+  Serial.print("Bump Med Width\t\t\t");
+  Serial.println(BUMP_MED);
+  Serial.print("Bump Max Width\t\t");
+  Serial.println(BUMP_MAX);
 
 }
 
@@ -142,32 +132,16 @@ void loop()
     Serial.print("You've selected ");  
     switch(env_type)
     {
-      case VIRTUAL_WALL:
-        Serial.println("Virtual Wall");
+      case BUMP_MIN:
+        Serial.println("Bump Min Width");
       break;
       
-      case LINEAR_DAMP:      
-        Serial.println("Linear Damping");  
+      case BUMP_MED:      
+        Serial.println("Bump Med Width");  
       break;
   
-      case NONLINEAR_FRIC:
-        Serial.println("Nonlinear Friction");
-      break;
-      
-      case HARD_SURFACE:
-        Serial.println("Hard Surface");
-      break;
-  
-      case BUMP_VALLEY:
-        Serial.println("Bump and Valley");  
-      break;
-  
-      case TEXTURE:
-         Serial.println("Texture");
-      break;
-      
-      case MSD:
-         Serial.println("Mass, Spring, Damper");
+      case BUMP_MAX:
+        Serial.println("Bump Max Width");
       break;
     }
   }
@@ -190,231 +164,49 @@ void loop()
   
  
   //**************** VIRTUAL ENVIRONMENTS *********************
-  //constants/coefficients
-  
-  //virtual wall
-  //spring constant
-  double k = 400; //N/m
-  //wall position
-  double x_wall = 0.005; //m
-
-  //linear damping
-  //damping constant
-  double b = 10; //N*s/m
-  
-  //nonlinear friction -- Karnopp
-  double F_dyn = 0.05;   //roughly smallest noticeable force
-  //note: cp = cn
-  double bn = 4;   //speeds probably top out around 0.3 during actual manipulation  
-  //note: bp = bn
-  double F_stat = 1.5;   //"static" friction
-  //note Dp = Dn
-  double dv = 0.05;  //"static" band
-  
-  //hard surface
-  double k_hard = k;
-  double x_wall_hard = x_wall;
-  boolean in_wall = false;  //stores whether or not the manipulator was already "in" the wall (for calculating decaying "impact" sinusoid)
-  unsigned long impact_time;  //initial time of impact - for decaying sinusoid
-  unsigned long time_since_impact;
-  //constants for decaying sinusoid
-  double hard_amplitude = 0.4;
-  double hard_freq = 1;
-  double hard_decay = 0.1;
-  
-  //bump/valley
-  //Hapkit range is +/- 5cm -> bump/valley 3cm wide, centered at +/-2.5cm
+  // constants/coefficients
+  // Hapkit range is +/- 5cm
   double center_pt = 0.00; //2.5cm on either side
-  double bump_width = 0.03; //3cm width
   double g = 9.8; //m/s^2
   double mass = 0.10; //kg
-  
-  //MSD w/ handle connected to mass by stiff spring
-  double k_g = 10;   //N/m
-  double b_g = .75;    //N*s/m
-  double mass_g = .2;   //kg
-  double k_u = 120;  //N/m
-  double x_eq = 0.01;//m
-  static unsigned long current_time = 0;  //measured in us
-  static unsigned long prev_time = 0;  //measured in us
-  double sample_period;
-  static double prev_accel = 0;
-  static double prev_vel_g = 0;
-  static double vel_g = 0;   //m/s   
-  static double x_g = x_eq;  //m
-  double accel;      //m/s^2
-  double force_handle;
+  double bump_width = 0.03;
     
   switch(env_type)
   {
-    //4A: Implements virtual wall with stiffness k at x = 0.5cm
-    case VIRTUAL_WALL:
-      
-      if(local_xh > x_wall)
-      {
-        //f = -k (hand position - wall position)
-        force = -k * ( local_xh - x_wall );
-      }
+   
+    case BUMP_MIN:
+      bump_width = 0.01; // 1cm width
     break;
     
-    //4B: Implements linear damping throughout workspace
-    case LINEAR_DAMP:      
-      //f = -bv
-      force = - b * local_vel_h;
+    case BUMP_MED:
+      bump_width = 0.03; // 3cm width
     break;
     
-    //4C: Karnopp model
-    //four cases: x' > dv, 0 < x' < dv, -dv < x' < 0, x' < -dv (also have a band around 0 to account for noise)
-    case NONLINEAR_FRIC:
-      //x' > dv, x' < -dv
-      if(local_vel_h > dv | local_vel_h < -dv)
-      {
-        //F = cn * sgn(x') + bn * x'
-        force = -(F_dyn * local_vel_h / abs(local_vel_h) + bn * local_vel_h);
-      }
-      //-dv < x' < 0, account for noise
-      //f = constant
-      else if(local_vel_h < -0.025)
-      {
-        force = F_stat;
-      }
-      //0 < x' < dv, account for noise
-      //f = constant
-      else if(local_vel_h > 0.025)
-      {
-        force = -F_stat;
-      }
-      else
-      {
-        //x' = 0, so no force applied
-        local_vel_h = 0;
-      }
+    case BUMP_MAX:
+      bump_width = 0.03; // 5cm width
+    break;    
     
-    break;
-    
-    //4D:
-    case HARD_SURFACE:
-      //start at same place as prior virtual wall
-      
-      if(local_xh > x_wall_hard)
-      {
-        //f = -k (hand position - wall position)
-        force = -k_hard * ( local_xh - x_wall );
-        if(!in_wall)
-        {
-          in_wall = true;
-          impact_time = micros();
-        }
-        //add decaying sinusoid: F = F - A * e(-at) * cos(wt)
-        time_since_impact = micros() - impact_time;
-        force = force - hard_amplitude * exp(-hard_decay * time_since_impact) * cos(hard_freq * time_since_impact);
-      }
-      //even if it leaves the wall by a little, don't eliminate vibrations quite yet
-      else if(local_xh > x_wall_hard * 0.9)
-      {
-        time_since_impact = micros() - impact_time;
-        force = hard_amplitude * exp(-hard_decay * time_since_impact) * cos(hard_freq * time_since_impact);
-      }
-      //not "in" wall
-      else
-      {
-        in_wall = false;
-        force = 0;
-      }
-
-    break;
-
-    //4E: bump at x<0, valley at x>0
-    case BUMP_VALLEY:
-      //for bumps and valleys, have Hapkit apply the gravitational force that's parallel to the "ground"
+  }
+  
+  //for bumps and valleys, have Hapkit apply the gravitational force that's parallel to the "ground"
       //using sinusoidal bumps/valleys, f = m*g*sin(pi*x_rel/length), where "x_rel" is position relative to the maximum (or minimum) point
           
-      //BUMP: point in range of center_pt +/- bump_width/2
-      if(local_xh < -(center_pt - bump_width/2) & local_xh > -(center_pt + bump_width/2))
-      {
-        force = mass * g * sin(2 * PI * (local_xh - (-center_pt)) / bump_width);
-      }
-      //VALLEY
-      /*else if(local_xh > (center_pt - bump_width/2) & local_xh < (center_pt + bump_width/2))
-      {
-        force = -mass * g * sin(2 * PI * (local_xh - (center_pt)) / bump_width);  
-      }
-      else
-      {
-        force = 0;
-      }
-      */
+    //BUMP: point in range of center_pt +/- bump_width/2
+    if(local_xh < -(center_pt - bump_width/2) & local_xh > -(center_pt + bump_width/2))
+    {
+      force = mass * g * sin(2 * PI * (local_xh - (-center_pt)) / bump_width);
+    }
+    //VALLEY
+    /*else if(local_xh > (center_pt - bump_width/2) & local_xh < (center_pt + bump_width/2))
+    {
+      force = -mass * g * sin(2 * PI * (local_xh - (center_pt)) / bump_width);  
+    }
+    else
+    {
+      force = 0;
+    }
+    */
 
-    break;
-    
-    //4F: Texture - varying damping and small bumps
-    case TEXTURE:
-      //texture :narrower bumps, smaller mass
-      force = -mass/3 * g * sin(2 * PI * (local_xh) / (bump_width/2));  
-      //also damping
-      force = force - b / 8 * local_vel_h;
-    break;
-    
-    //4G: Mass Spring Damper
-    case MSD:
-      //handle is at mass position
-      if(local_xh >= x_g)
-      {
-        //in contact with stiff sprint
-        force_handle = k_u * (local_xh - x_g);
-      }
-      else
-        //no contact
-        force_handle = 0;
-        
-      prev_accel = accel;
-      //F = mx'' = ku (x - (xh + xeq)) - k(x - xeq) - bx'
-      accel = (force_handle - k_g * (x_g - x_eq) - b_g * vel_g) / mass_g;
-      
-      //if they're not initialized make sure something weird doesn't happen
-      if(current_time == 0 && prev_time == 0)
-        prev_time = micros();
-      else
-        prev_time = current_time;
-      current_time = micros();
-      sample_period = (current_time - prev_time) / 1000000 / 62.5; //divide by 10^6
-      
-      prev_vel_g = vel_g;
-      //velocity integration
-      vel_g = vel_g + (accel + prev_accel) * sample_period/2;
-      //position integration - trapezoidal
-      x_g = x_g + (vel_g + prev_vel_g) * sample_period/2;
-      
-      //apply force to handle
-      //handle is beyond mass
-      if(local_xh >= x_g)
-      {
-        //in contact with stiff 
-        force = k_u * (x_g - local_xh);
-      }
-      else
-        //no contact
-        force = 0;
-        
-        //NOTE: this particular environment works much better with the printouts
-        //because I'm calculating the position/velocity with interrupts this is fairly benign, though
-        //but unfortunately I don't have time to fix it
-      Serial.print("xg\t");
-      Serial.print(x_g);
-      Serial.print("\txh\t");
-      Serial.print(local_xh);
-      Serial.print("\tvel_g\t");
-      Serial.print(vel_g);
-      Serial.print("\tForce\t");
-      Serial.println(force);
-    
-    break;
-    
-    default:
-      // Step C.1: force = ?; // In lab 3, you will generate a force by simply assigning this to a constant number (in Newtons)
-//      force = 1.5; //N  
-     break;
-  }
   
   DEBUG_SERIAL.print(" \tForce");
   DEBUG_SERIAL.println(force);
