@@ -103,11 +103,11 @@ void setup()
   Serial.println("Initialized");
   
   Serial.println("Select environment type: ");
-  Serial.print("Valley Min Width\t\t\t");
+  Serial.print("Min Spring Constant\t\t\t");
   Serial.println(SURF_MIN);
-  Serial.print("Valley Med Width\t\t\t");
+  Serial.print("Med Spring Constant\t\t\t");
   Serial.println(SURF_MED);
-  Serial.print("Valley Max Width\t\t");
+  Serial.print("Max Spring Constant\t\t");
   Serial.println(SURF_MAX);
 
 }
@@ -179,11 +179,11 @@ void loop()
   {
    
     case SURF_MIN:
-      k_hard = 10; // N/m
+      k_hard = 20; // N/m
     break;
     
     case SURF_MED:
-      k_hard = 60; // N/m
+      k_hard = 80; // N/m
     break;
     
     case SURF_MAX:
