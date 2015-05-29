@@ -183,7 +183,7 @@ void loop()
     break;
     
     case BUMP_MAX:
-      bump_width = 0.03; // 5cm width
+      bump_width = 0.05; // 5cm width
     break;    
     
   }
